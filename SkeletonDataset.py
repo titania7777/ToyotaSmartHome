@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Jan 18 16:24:25 2021
-
-@author: rubijade
-"""
-
 import os
 import csv
 import numpy as np
@@ -15,10 +8,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import json
 
-# VideoDataset load for video frames
-# frames path: root path of frames
-# you must be follow our csv format when using this loader
-# csv file header => sub directory file path, index, category
+# Custom Dataset to load of skeleton files
 class SkeletonDataset(Dataset):
     def __init__(self, rootpath:str, pose3D_path:str):
 
