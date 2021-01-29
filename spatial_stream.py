@@ -52,13 +52,7 @@ parser.add_argument("--checkpoint_model", type=str, default="", help="Optional p
 parser.add_argument("--checkpoint_interval", type=int, default=5, help="Interval between saving model checkpoints")
 opt = parser.parse_args()
 print(opt)
-        
     
-
-############################################################################################
-#convLSTM
-############################################################################################
-
 
 ### Ici le encoder represent le resnet qui va permettre d'extraire dans un premier temps le features
 class Encoder(nn.Module):
