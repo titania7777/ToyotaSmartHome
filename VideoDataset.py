@@ -2,23 +2,31 @@ import os
 import csv
 import numpy as np
 import torch
-from PIL import Image # pillow-simd
+from PIL import Image
 from torch.utils.data import Dataset
 from glob import glob
 import torchvision.transforms as transforms
 
-# VideoDataset load for video frames
-# frames path: root path of frames
-# you must be follow our csv format when using this loader
-# csv file header => sub directory file path, index, category
+"""
+[args]
+frame_size:int = size of input frames (default: 112)
+channels_first:bool = True(for 3D CNN), False(for 2D CNN)
+sequence_length:int = number of frames to be used for training or validation per video
+max_interval:int = this value can impose limits on frame sampling strategy, no limitation(-1)
+random_interval:bool = True(floating interval), False(fixed interval)
+random_start_position:bool = True(floating start position), False(start position is 0)
+uniform_frame_sample:bool = True(uniform sampling based on "random_interval", "random_start_position" options), False(just random sampling)
+random_pad_sample:bool = True(random samples of frames to be used for pad), False(duplicate first frame and repeat)
+"""
 class VideoDataset(Dataset):
-    def __init__(self, frames_path:str, csv_path:str, frame_size:int = 112,
+    def __init__(self, frames_path:str, csv_path:str, frame_size:int = 112, channels_first:bool = False,
     # for self._index_sampler
-    sequence_length:int = 16, max_interval:int = 7, random_interval:bool = False, random_start_position:bool = False, uniform_frame_sample:bool = True,
+    sequence_length:int = 16, max_interval:int = -1, random_interval:bool = False, random_start_position:bool = False, uniform_frame_sample:bool = True,
     # for self._add_pads
     random_pad_sample:bool = False):
 
         self.frames_path = frames_path
+        self.channels_first = channels_first
         self.sequence_length = sequence_length
 
         # values for self._index_sampler
@@ -31,17 +39,18 @@ class VideoDataset(Dataset):
         self.random_pad_sample = random_pad_sample
 
         # read a csv file
+        self.labels = [] # [[sub directory file path, index]]
+        self.categories = {} # {index: category}
         with open(csv_path, "r") as f:
             reader = csv.reader(f)
-            self.labels = {}
-            self.categories = {}
             for rows in reader:
-                subfilepath = rows[0]; index = int(rows[1]); category = rows[2]
-                self.labels[subfilepath] = index # {sub directory file path: index}
+                sub_file_path = rows[0]; index = int(rows[1]); category = rows[2]
+                self.labels.append([sub_file_path, index])
                 if index not in self.categories:
-                    self.categories[index] = category # {index: category}
-        self.subfilespath = list(self.labels)
-        
+                    self.categories[index] = category
+        self.num_classes = len(self.categories)
+        print(self.categories)
+        # transformer
         self.transform = transforms.Compose([
             transforms.Resize(frame_size),
             transforms.CenterCrop(frame_size),
@@ -50,77 +59,64 @@ class VideoDataset(Dataset):
         ])
 
     def __len__(self) -> int:
-        return len(self.subfilespath)
+        return len(self.labels)
     
     def get_category(self, index:int) -> str:
         return self.categories[index]
     
-    def get_num_classes(self) -> int:
-        print(self.categories)
-        return len(self.categories)
-
     def _add_pads(self, length_of_frames:int) -> list:
         # length to list
         sequence = np.arange(length_of_frames)
 
         if self.random_pad_sample:
-            # random sampled of pad
+            # random samples of frames to be used for pad
             add_sequence = np.random.choice(sequence, self.sequence_length - length_of_frames)
         else:
-            # repeated first pad
+            # duplicate first frame and repeat
             add_sequence = np.repeat(sequence[0], self.sequence_length - length_of_frames)
 
-        # sorting the list
+        # sorting of the array
         sequence = sorted(np.append(sequence, add_sequence, axis=0))
 
         return list(sequence)
 
     def _index_sampler(self, length_of_frames:int) -> list:
-        # set the default interval
-        interval = length_of_frames // self.sequence_length
-        interval = 1 if interval == 0 else interval
-        if self.max_interval != -1 and interval > self.max_interval:
-            interval = self.max_interval
-        
-        # set the interval with randomlly(default is default interval)
-        if self.random_interval:
-            interval = np.random.permutation(np.arange(start=1, stop=interval + 1))[0]
-
-        # set the start position(default is 0), this may be helpful when video has a large frames
-        # required number of sample => (i + 1) x s - i, when i is interval and s is sequence length
-        # ex) frames: 1, 2, 3, 4, 5, 6, 7 ,8, 9, 10
-        # when sequence length is 3, interval is 2 and start position is 3 then you will get 3, 6, 9 frame and for this you need (2 + 1) x 3 - 2 = 7 samples
-        range_of_start_position = length_of_frames - ((interval + 1)*self.sequence_length - interval)
-        
-        # interval resolving
-        if range_of_start_position < 0:
-            for interval in reversed(range(interval)):
-                range_of_start_position = length_of_frames - ((interval + 1)*self.sequence_length - interval)
-                if range_of_start_position > 0:
-                    break
-
-        # set the start position
-        if self.random_start_position and range_of_start_position != 0:
-            start_position = np.random.randint(0, range_of_start_position)
-        else:
-            start_position = 0
-
-        # set the sampling strategy(default is uniform)
-        # i'm not recommend using the random sampling
+        # sampling strategy(uniformly / randomly)
         if self.uniform_frame_sample:
-            sampled_index = list(range(start_position, length_of_frames, interval + 1))[:self.sequence_length]
+            # set the default interval
+            interval = (length_of_frames // self.sequence_length) -1
+            if self.max_interval != -1 and interval > self.max_interval:
+                interval = max_interval
+            
+            # "random interval" is select an interval with randomly
+            if self.random_interval:
+                interval = np.random.permutation(np.arange(start=1, stop=interval + 1))[0]
+            
+            # "require frames" is number of frames to sampling with specified interval
+            require_frames = ((interval + 1) * self.sequence_length - interval)
+
+            # "range of start position" is will be used for select to start position
+            range_of_start_position = length_of_frames - require_frames
+
+            # "random start position" is select a start position with randomly
+            if self.random_start_position and range_of_start_position > 0:
+                start_position = np.random.randint(0, range_of_start_position + 1)
+            else:
+                start_position = 0
+            
+            sampled_index = list(range(start_position, require_frames + start_position, interval + 1))
         else:
             sampled_index = sorted(np.permutation(np.arange(length_of_frames)))[:self.sequence_length]
 
         return list(sampled_index)
 
     def __getitem__(self, index):
-        subfilepath = self.subfilespath[index]
+        sub_file_path, label = self.labels[index]
 
-        # get frames path
-        images_path = np.array(sorted(glob(os.path.join(self.frames_path, subfilepath, "*"))))
+        # get a frames path
+        images_path = np.array(sorted(glob(os.path.join(self.frames_path, sub_file_path, "*"))))
 
-        # get index of samples
+        # get a index of samples
         length_of_frames = len(images_path)
         assert length_of_frames != 0, f"'{subfilepath}' is not exists or empty."
 
@@ -131,8 +127,7 @@ class VideoDataset(Dataset):
             
         images_path = images_path[indices]
 
-        # load frames
-        data = torch.stack([self.transform(Image.open(image_path)) for image_path in images_path], dim=0)
-        label = self.labels[subfilepath]
+        # load a frames
+        data = torch.stack([self.transform(Image.open(image_path)) for image_path in images_path], dim=1 if self.channels_first else 0)
 
         return data, label

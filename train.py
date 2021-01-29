@@ -1,3 +1,4 @@
+import os
 import argparse
 import torch
 import torch.nn as nn
@@ -39,15 +40,17 @@ def accuracy(output, target, topk=(1,)):
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Toyota_smart_home spatial stream on CCLSTM')
-    parser.add_argument('--frames-path', default='../Data/ToyotaSmartHome_frames/', type=str)
-    parser.add_argument('--csv-path', default='./labels/cross_view1/', type=str)
-    parser.add_argument('--cross-view', action="store_true")
-    parser.add_argument('--epochs', default=200, type=int)
-    parser.add_argument('--batch-size', default=32, type=int)
-    parser.add_argument('--lr', default=1e-3, type=float)
-    parser.add_argument('--gpu-number', default=0, type=int)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Toyota Smart Home spatial stream on ConvLSTM")
+    parser.add_argument("--frames-path", default="./Data/mp4_frames/", type=str)
+    parser.add_argument("--csv-path", default="./Data/Labels/cross_subject/", type=str)
+    parser.add_argument("--cross-view", action="store_true")
+    parser.add_argument("--frame-size", default=224, type=int)
+    parser.add_argument("--sequence-length", default=16, type=int)
+    parser.add_argument("--epochs", default=200, type=int)
+    parser.add_argument("--batch-size", default=64, type=int)
+    parser.add_argument("--lr", default=1e-3, type=float)
+    parser.add_argument("--gpu-number", default=0, type=int)
 
     # path check 
 
@@ -56,14 +59,10 @@ if __name__ == '__main__':
     print(args)
 
     # Prepare the loader
-    train = VideoDataset(frames_path=args.frames_path, csv_path=args.csv_path+"train.csv", frame_size=112, sequence_length=16)
-    train_loader = DataLoader(train, batch_size=16, shuffle=True, num_workers=4)
-    if args.cross_view:
-        val = VideoDataset(frames_path=args.frames_path, csv_path=args.csv_path+"val.csv", frame_size=112, sequence_length=16)
-        val_loader = DataLoader(val, batch_size=16, shuffle=False, num_workers=4)
-    else:
-        val = VideoDataset(frames_path=args.frames_path, csv_path=args.csv_path+"test.csv", frame_size=112, sequence_length=16)
-        val_loader = DataLoader(test, batch_size=16, shuffle=False, num_workers=4)
+    train = VideoDataset(frames_path=args.frames_path, csv_path=args.csv_path + "train.csv", frame_size=args.frame_size, sequence_length=args.sequence_length)
+    val = VideoDataset(frames_path=args.frames_path, csv_path=os.path.join(args.csv_path, "val.csv" if args.cross_view else "test.csv"), frame_size=args.frame_size, sequence_length=args.sequence_length)
+    train_loader = DataLoader(train, batch_size=args.batch_size, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     # get a device
     if torch.cuda.is_available():
@@ -71,12 +70,11 @@ if __name__ == '__main__':
         device = torch.device(f"cuda:{args.gpu_number}")
     else:
         device = torch.device(f"cpu")
-    train.get_num_classes()
-    val.get_num_classes()
+
     # get a model
     model = ConvLSTM(
         backbone_name="resnet18",
-        num_classes=train.get_num_classes(),
+        num_classes=train.num_classes,
         hidden_size=1024,
         num_layers=1,
         bidirectional=True
@@ -101,7 +99,6 @@ if __name__ == '__main__':
             # get a prediction scores and clculate loss
             pred = model(datas)
             loss = criterion(pred, labels)
-            print(labels)
 
             # update
             optimizer.zero_grad()
@@ -110,14 +107,14 @@ if __name__ == '__main__':
 
             # calculate loss and acc
             prec1, prec3 = accuracy(pred.data, labels, topk=(1, 3))
-            train_loss.update(loss.item, datas.size(0))
-            train_top1.update(prec1[0], datas.size(0))
-            train_top3.update(prec3[0], datas.size(0))
+            train_loss.update(loss.item(), datas.size(0))
+            train_top1.update(prec1.item(), datas.size(0))
+            train_top3.update(prec3.item(), datas.size(0))
 
             # print a message
             print("[train] epochs: {}/{} batch: {}/{} loss: {:.4f}({:.4f}) proc@1: {:.4f}({:.4f}) proc@3: {:.4f}({:.4f})".format(
-                e, epochs, i, len(train_loader), train_loss.val(), train_loss.avg(),
-                train_top1.val(), train_top1.avg(), train_top3.val(), train_top3.avg(),
+                e, args.epochs, i, len(train_loader), train_loss.val, train_loss.avg,
+                train_top1.val, train_top1.avg, train_top3.val, train_top3.avg,
             ))
 
         # ================
@@ -136,11 +133,11 @@ if __name__ == '__main__':
 
             # calculate loss and acc
             prec1, prec3 = accuracy(pred.data, labels, topk=(1, 3))
-            val_loss.update(loss.data[0], datas.size(0))
-            val_top1.update(prec1[0], datas.size(0))
-            val_top3.update(prec3[0], datas.size(0))
+            val_loss.update(loss.item(), datas.size(0))
+            val_top1.update(prec1.item(), datas.size(0))
+            val_top3.update(prec3.item(), datas.size(0))
 
             print("[val] epochs: {}/{} batch: {}/{} loss: {:.4f}({:.4f}) proc@1: {:.4f}({:.4f}) proc@3: {:.4f}({:.4f})".format(
-                e, epochs, i, len(val_loader), val_loss.val(), val_loss.avg(),
-                val_top1.val(), val_top1.avg(), val_top3.val(), val_top3.avg(),
+                e, args.epochs, i, len(val_loader), val_loss.val, val_loss.avg,
+                val_top1.val, val_top1.avg, val_top3.val, val_top3.avg,
             ))

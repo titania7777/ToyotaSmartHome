@@ -22,6 +22,8 @@ class Encoder(nn.Module):
         else:
             assert False, f"'{backbone_name}' backbone is not supported"
         
+        self.out_features = resnet.fc.in_features
+
         # remove a fully connected layer
         self.encoder = nn.Sequential(*list(resnet.children())[:-1])
 
@@ -43,7 +45,7 @@ class ConvLSTM(nn.Module):
         # freeze
         self.encoder = Encoder(backbone_name)
         # updateable
-        self.lstm = nn.LSTM(512, hidden_size, num_layers, batch_first=True, bidirectional=bidirectional)
+        self.lstm = nn.LSTM(self.encoder.out_features, hidden_size, num_layers, batch_first=True, bidirectional=bidirectional)
         self.classifier = nn.Sequential(
             nn.Linear(2 * hidden_size if bidirectional else hidden_size, hidden_size),
             nn.ReLU(),
