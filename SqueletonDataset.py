@@ -60,22 +60,6 @@ class SkeletonDataset(Dataset):
                 pose_data.append(dic.get('pose3d'))
         
         return list(pose_data)
-    
-    def _add_pads(self, length_of_frames:int) -> list:
-        # length to list
-        sequence = np.arange(length_of_frames)
-
-        if self.random_pad_sample:
-            # random sampled of pad
-            add_sequence = np.random.choice(sequence, self.sequence_length - length_of_frames)
-        else:
-            # repeated first pad
-            add_sequence = np.repeat(sequence[0], self.sequence_length - length_of_frames)
-
-        # sorting the list
-        sequence = sorted(np.append(sequence, add_sequence, axis=0))
-
-        return list(sequence)
         
 
     def __getitem__(self, index):
