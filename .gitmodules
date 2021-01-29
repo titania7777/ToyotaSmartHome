@@ -1,0 +1,3 @@
+[submodule "Data/FrameExtractor"]
+	path = Data/FrameExtractor
+	url = https://github.com/titania7777/FrameExtractor.git
