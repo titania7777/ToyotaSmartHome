@@ -1,3 +1,13 @@
+# ignore the pycache files
 __pycache__
+
+# ignore the dataset
+Data/mp4
+Data/mp4_frames
+Data/depth
+Data/depth_frames
+Data/json
+
 frame_output
 labels
+.vscode
