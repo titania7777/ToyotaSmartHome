@@ -11,6 +11,7 @@ import torchvision.transforms as transforms
 # frames path: root path of frames
 # you must be follow our csv format when using this loader
 # csv file header => sub directory file path, index, category
+
 class VideoDataset(Dataset):
     def __init__(self, frames_path:str, csv_path:str, frame_size:int = 112,
     # for self._index_sampler

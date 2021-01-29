@@ -171,15 +171,6 @@ class Spatial_ConvLstm():
                     'state_dict': self.model.state_dict(),
                     'best_prec1': self.best_prec1,
                     'optimizer' : self.optimizer.state_dict()},is_best,'record/spatial/checkpoint.pth.tar','record/spatial/model_best.pth.tar')
-            
-# =============================================================================
-#             if is_best:
-#                 self.best_prec1 = prec1
-#                 with open('record/spatial/spatial_video_preds.pickle','wb') as f:
-#                     pickle.dump(self.dic_video_level_preds,f)
-#                 f.close()
-# =============================================================================
-
 
     def train_(self):
         print('==> Epoch:[{0}/{1}][training stage]'.format(self.epoch, self.nb_epochs))
