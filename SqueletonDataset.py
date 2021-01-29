@@ -10,7 +10,9 @@ import csv
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
 import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
 import json
 
 # VideoDataset load for video frames
@@ -18,20 +20,12 @@ import json
 # you must be follow our csv format when using this loader
 # csv file header => sub directory file path, index, category
 class SkeletonDataset(Dataset):
-    def __init__(self, frames_path:str, csv_path:str, train:bool,
-    # for self._index_sampler
-    sequence_length:int = 16, max_interval:int = 7, random_interval:bool = False, random_start_position:bool = False, uniform_frame_sample:bool = True,
-    # for self._add_pads
-    random_pad_sample:bool = False):
+    def __init__(self, rootpath:str, pose3D_path:str):
 
-        self.frames_path = frames_path
-        self.train = train
-        self.sequence_length = sequence_length
-
-        # values for self._add_pads
-        self.random_pad_sample = random_pad_sample
+        self.rootpath = rootpath
+        self.pose3D_path = pose3D_path
         # read a csv file
-        with open(csv_path, "r") as f:
+        with open(pose3D_path, "r") as f:
             reader = csv.reader(f)
             self.labels = {}
             self.categories = {}
@@ -66,16 +60,30 @@ class SkeletonDataset(Dataset):
         subfilepath = self.subfilespath[index]
 
         path = self.frames_path + subfilepath + '.json'
-        frames_pose = self._get_poselist(path)
-        label = self.labels[subfilepath]
+        
+        #getting the 3poses of each frame as a list
+        poses3D = self._get_poselist(path)
+        labels = self.labels[subfilepath]
 
-        leng_poses = len(frames_pose)
+        return poses3D, labels
 
-        indices = self._add_pads(leng_poses)
+class MyCollate:
+    def __init__(self, pad_idx):
+        self.pad_idx = pad_idx
 
-        frames_pose = frames_pose[indices]
-        # load frames
-        # dans le frame load tu affecte au data la valeur de la pose de te meme que le lavbel
-        data = torch.stack([torch.tensor(frame_pose) for frame_pose in frames_pose], dim=0)
+    def __call__(self, batch):
+        poses3D = [item[0].unsqueeze(0) for item in batch]
+        pose3D = torch.cat(pose3D, dim=0)
+        labels = [item[1] for item in batch]
+        labels = pad_sequence(labels, batch_first=False, padding_value=self.pad_idx)
 
-        return data, label, self.train
+        return pose3D, labels
+    
+    def getloader(self, root_folder, annotation_file, pose3D, transform, batch_size=32, num_workers = 8, shuffle = True, pin_memory = True):
+        data = SkeletonDataset(root_folder, pose3D)
+        pad_idx = data.index(data[0])
+
+        loader = DataLoader(dataset=data, batch_size=batch_size, num_workers=num_workers, 
+        shuffle=shuffle, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx))
+
+        return loader, data
