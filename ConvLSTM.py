@@ -28,7 +28,7 @@ class Encoder(nn.Module):
         # freeze all updatable weights of the encoder
         self._freeze_all(self.encoder)
     
-    def _freeze_all(model:nn.Module):
+    def _freeze_all(self, model:nn.Module):
         for param in model.parameters():
             param.requires_grad = False
 
@@ -60,8 +60,7 @@ class ConvLSTM(nn.Module):
 
         # get (temporal)feature of frames
         x = x.view(b, d, -1)
-        x = self.lstm(x)
-        print(x.size())
+        x = self.lstm(x)[0][:, -1]
 
         # get classifier scores
         x = self.classifier(x)
