@@ -95,7 +95,7 @@ val = VideoDataset(frames_path=args.frames_path, csv_path=os.path.join(args.csv_
 train_loader = DataLoader(train, batch_size=args.batch_size, shuffle=True, num_workers=0)
 val_loader = DataLoader(val, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
-#get the features from the class
+#get the features from the class new_model
 listfeature = []
 model = new_model(spatialmodel, ["encoder", "lstm"])
 model.to(device)
